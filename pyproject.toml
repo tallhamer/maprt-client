@@ -1,0 +1,41 @@
+[project]
+name = "maprt-client"
+version = "0.1.0"
+description = "Client for the MapRT collision-avoidance API: wire-format parsing, request building, beam checks, session recording and an httpx2 transport. numpy + httpx2 only: no VTK, no Qt."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Michael J. Tallhamer" },
+]
+
+dependencies = [
+    "numpy>=1.26",
+    # httpx2, the maintained successor of httpx (same API and wire behaviour; Starlette's TestClient
+    # deprecates httpx): one HTTP library for the whole workspace.
+    "httpx2>=2.16",
+    # Nothing else, on purpose (2026-11-09): the VTK part (the .obj surface decode) is the separate
+    # maprt-surface package, so this one installs light enough for Binder and Colab.
+]
+
+[dependency-groups]
+# What its own test suite needs beyond the dependencies (the public mirror's CI installs it with
+# `pip install . --group test`).
+test = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/maprt_client"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

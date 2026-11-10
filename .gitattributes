@@ -1,0 +1,11 @@
+# Written by sgrt-tools' scripts/publish_member.py: edit it there, never in this mirror.
+# Line endings are a property of the repository, not of the machine that checks it out: every
+# text file is LF on every OS. Recorded data (maps, JSON replies) is served and compared byte for
+# byte, so a Windows checkout must not turn it into CRLF.
+* text=auto eol=lf
+
+# Binary files carry no line endings.
+*.dcm binary
+*.zip binary
+*.png binary
+*.pdf binary

@@ -1,0 +1,118 @@
+# Written by sgrt-tools' scripts/publish_member.py: edit it there, never in this mirror.
+# A vX.Y.Z tag releases maprt-client: build once, publish to TestPyPI, install that from TestPyPI on
+# every OS, then (after a maintainer approves the `pypi` environment) publish the same files to
+# PyPI and create the GitHub Release. Trusted publishing (OIDC): no API tokens anywhere.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: The tag matches the version in pyproject.toml
+        shell: python
+        run: |
+          import os, sys, tomllib
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          tag = os.environ["GITHUB_REF_NAME"]
+          sys.exit(0 if tag == f"v{version}" else f"tag {tag} != v{version}")
+      - run: python -m pip install --upgrade build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/maprt-client/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A rerun after a later job failed finds this version already there; that's fine.
+          skip-existing: true
+
+  testpypi-install:
+    needs: testpypi
+    name: Install from TestPyPI, ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # Only our own wheel comes from TestPyPI (--no-deps); its dependencies come from PyPI alone.
+      # Anyone can upload any name to TestPyPI (it holds a junk "FASTAPI-1.0" sdist, say), and with
+      # --extra-index-url pip takes the highest version across both indexes.
+      - name: Download the just-published wheel from TestPyPI
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for attempt in 1 2 3 4 5 6; do
+            python -m pip download --no-deps --only-binary :all: --dest dl \
+              --index-url https://test.pypi.org/simple/ "maprt-client==$version" && exit 0
+            sleep 30  # TestPyPI's index can lag the upload by a minute or two
+          done
+          exit 1
+      - name: Install it, with its dependencies from PyPI
+        shell: bash
+        run: python -m pip install dl/*.whl
+      - run: python -c "import importlib.metadata as m; print(m.version('maprt-client'))"
+
+  pypi:
+    needs: testpypi-install
+    runs-on: ubuntu-latest
+    # The maintainer sets this environment to require their approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/maprt-client/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Create the GitHub Release (marked Latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "maprt-client $version" --latest \
+            --notes "Install: \`pip install \"maprt-client==$version\"\` (https://pypi.org/project/maprt-client/$version/)."
