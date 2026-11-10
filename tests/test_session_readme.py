@@ -13,6 +13,7 @@ import pytest
 from maprt_client import MapRTApiError, MapRTClient, SessionRecorder
 from maprt_client.session_readme import (
     README_NAME,
+    _size,
     endpoint_label,
     main,
     render_readme,
@@ -22,7 +23,9 @@ from maprt_client.session_readme import (
 
 API_URL = "https://appliance.example"
 ZERO = "00000000-0000-0000-0000-000000000000"
-MAP_TEXT = b"37,36\r\n0,0,1\r\nDONE\r\n"
+#: A complete low-resolution map: 37 couch x 36 gantry triples, then DONE.
+MAP_TEXT = ("37,36\r\n" + "".join(f"{c},{g},1\r\n" for c in [*range(270, 360, 5), *range(0, 91, 5)]
+                                   for g in range(0, 360, 10)) + "DONE\r\n").encode()
 DUPLICATE = {"errorData": None, "success": False, "errorCode": "DuplicateKey",
              "errorCodeType": "TreatmentRoomAdministrationErrorCodes"}
 
@@ -118,7 +121,7 @@ class TestSummary:
             ("Get Surfaces", "patient 000008", True, "1 surface"),
             ("Get Surface", "surface-a", True, "surface data, 115 B"),
             ("Get Map", "low res; couch 20 mm, patient 30 mm; HFS; room room-1; surface surface-a", True,
-             f"map 37 × 36, {len(MAP_TEXT)} B"),
+             f"map 37 × 36, {_size(len(MAP_TEXT))}"),
             ("Check Beams", "couch 20 mm, patient 30 mm; HFS; room room-1; surface surface-a; 2 beams", True,
              "2 beams, 1 unsafe"),
         ]
@@ -145,7 +148,7 @@ class TestSummary:
         client.get_map({"HighResolution": True})
         next(recorder.session_dir.glob("*_response.txt")).unlink()
         (call,) = summarize_session(recorder.session_dir).calls
-        assert call.detail == f"map, {len(MAP_TEXT)} B (its .txt is missing)"
+        assert call.detail == f"map, {_size(len(MAP_TEXT))} (its .txt is missing)"
 
 
     def test_a_pack_body_ref_is_followed(self, session):
@@ -168,7 +171,7 @@ class TestSummary:
             later.write_text(json.dumps(record), encoding="utf-8")
         details = [call.detail for call in summarize_session(recorder.session_dir).calls]
         assert details == ["surface data, 115 B", "surface data, 115 B",
-                           f"map 37 × 36, {len(MAP_TEXT)} B", f"map 37 × 36, {len(MAP_TEXT)} B"]
+                           f"map 37 × 36, {_size(len(MAP_TEXT))}", f"map 37 × 36, {_size(len(MAP_TEXT))}"]
 
     def test_a_body_ref_to_nothing_is_left_as_it_is(self, session):
         client, recorder = session

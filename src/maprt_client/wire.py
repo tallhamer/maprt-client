@@ -153,18 +153,36 @@ def parse_beam_delivery_status(text):
     return [(status['beamNumber'], status['isSafe']) for status in statuses]
 
 
+class IncompleteMapError(ValueError):
+    """A GetMap reply that stopped early: no closing ``DONE``, or fewer angle triples than its
+    header announces. A dropped connection looks like this; parsing it anyway would leave the
+    missing angles as collisions without a word, so it is refused instead."""
+
+
 def parse_collision_map(text):
     """The collision map from a GetMap response, as (array, x_ticks, y_ticks).
 
     The wire format is a whitespace-separated token stream: the first token is
-    `couch_samples,gantry_samples`, the remaining tokens (bar a discarded trailing one) are
-    `couch,gantry,isOK` triples. A coarse map is upsampled so the returned array is always
-    at one-degree resolution, matching the index space the beam check works in.
+    `couch_samples,gantry_samples`, then one `couch,gantry,isOK` triple per angle pair, then
+    `DONE`. A reply without `DONE`, or with fewer triples than `couch_samples * gantry_samples`,
+    raises :class:`IncompleteMapError` (every recorded appliance reply is complete).
+
+    The array is always **360 × 181** at one-degree resolution (rows gantry 180° round to 179°,
+    columns couch 270° through 0° to 90°), the index space the beam check works in. A coarse
+    map is upsampled to it: each sample covers its own angle and the ones up to the next
+    sample, and the last couch sample (90°) stops at 90°.
     """
     lst = text.split()
+    if not lst or lst[-1] != 'DONE':
+        raise IncompleteMapError('The GetMap reply has no closing DONE: the map is incomplete '
+                                 '(the connection may have dropped).')
 
     # Determine the sampling for the gantry and couch axes
     couch_samples, gantry_samples = lst[0].split(',')
+    expected = int(couch_samples) * int(gantry_samples)
+    if len(lst) - 2 != expected:
+        raise IncompleteMapError(f'The GetMap reply has {len(lst) - 2} angle pairs, not the {expected} '
+                                 f'its header announces ({couch_samples} couch x {gantry_samples} gantry).')
     gantry_step_size = 360 / int(gantry_samples)
     couch_step_size = 180 / (int(couch_samples) - 1)
 
@@ -213,6 +231,11 @@ def parse_collision_map(text):
                                   )
     else:
         collision_map = _collision_map
+
+    # Repeating each sample overshoots the couch axis by one step less a degree: 37 low-resolution
+    # couch samples x 5 = 185 columns, the extra 4 past couch 90. Every column at or below 90
+    # (index 180) already holds its value; trim to the one-degree grid, 360 x 181.
+    collision_map = collision_map[:360, :181]
 
     # construct couch index positions for resampled map
     c0 = np.arange(270, 360, 1)

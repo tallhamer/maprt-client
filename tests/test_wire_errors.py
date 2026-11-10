@@ -103,9 +103,9 @@ class TestRaiseForHttpStatus:
 
 class TestParseMapResponse:
     def test_parses_a_streaming_map_body(self):
-        # header "couch,gantry" = 2,2, then 2*2 triples, then a discarded trailing token —
+        # header "couch,gantry" = 2,2, then 2*2 triples, then DONE —
         # a non-JSON body must route to parse_collision_map, not the error path.
-        text = "2,2 270,180,1 270,0,1 0,180,1 0,0,1 END"
+        text = "2,2 270,180,1 270,0,1 0,180,1 0,0,1 DONE"
         image, _x, _y = wire.parse_map_response(text)
         assert image.shape == wire.parse_collision_map(text)[0].shape
 

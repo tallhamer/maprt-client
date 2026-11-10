@@ -124,6 +124,7 @@ print(client.get_beam_delivery_status(body))                         # [(beam_nu
 | `wire` | The reply parsers the client uses, for text you already have (the collision-map stream, rooms, surfaces, beam verdicts) |
 | `check_beams` | Static beams and arcs checked against a collision map |
 | `MapRTApiError`, `BeamDeliveryStatusError` | The typed errors |
+| `IncompleteMapError` | Raised by `get_map` (and the `wire` parsers) when a map reply was cut off: no closing `DONE`, or fewer angle pairs than its header announces. A partial map is never returned |
 | `SessionRecorder` | Set `client.recorder` to one to write every request and reply to a folder (the format the emulator's packs are built from) |
 
 Some details that matter with a real appliance:
@@ -135,6 +136,14 @@ Some details that matter with a real appliance:
 - **The token is a secret:** the client never logs it, and a `SessionRecorder` redacts it.
 - `get_surface` returns the surface's raw `.obj` bytes. Turning them into a mesh is up to you
   (any OBJ reader works).
+
+## Changes
+
+* **0.1.1:** a map reply cut off before `DONE` (or missing angle pairs) raises `IncompleteMapError`
+  instead of parsing into a partial array. A low-resolution map now has the same 360 × 181 shape
+  as a high-resolution one (it was 185 columns wide; the four extra columns past couch 90° held no
+  new information and nothing could address them). Every value at couch 270°–90° is unchanged.
+* **0.1.0:** first release.
 
 ## Licence and source
 
